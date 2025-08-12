@@ -20,7 +20,7 @@ variable "node_desired_size" {
 
 variable "node_instance_types" {
   type        = list(string)
-  default     = ["t3.small"]
+  default     = ["t3.large"]
   description = "EC2 instance types for the node group"
 }
 
@@ -99,7 +99,7 @@ provider "kubernetes" {
   token                  = data.aws_eks_cluster_auth.this.token
 }
 
-# Deploy a simple NGINX Deployment and Service
+# Deploy Ollama Wrapper Deployment and Service
 resource "kubernetes_namespace" "hello" {
   metadata {
     name = "hello"
@@ -108,35 +108,35 @@ resource "kubernetes_namespace" "hello" {
   depends_on = [module.eks]
 }
 
-resource "kubernetes_deployment" "nginx" {
+resource "kubernetes_deployment" "ollama_wrapper" {
   metadata {
-    name      = "hello-nginx"
+    name      = "hello-ollama-wrapper"
     namespace = kubernetes_namespace.hello.metadata[0].name
     labels = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
   }
 
   spec {
-    replicas = 2
+    replicas = 1
 
     selector {
       match_labels = {
-        app = "hello-nginx"
+        app = "hello-ollama-wrapper"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "hello-nginx"
+          app = "hello-ollama-wrapper"
         }
       }
 
       spec {
         container {
-          name  = "nginx"
-          image = "nginx:stable-alpine"
+          name  = "ollama-wrapper"
+          image = "public.ecr.aws/f0b1x2x3/ollama-wrapper:latest"
 
           env {
             name = "NODE_NAME"
@@ -147,26 +147,24 @@ resource "kubernetes_deployment" "nginx" {
             }
           }
 
+          env {
+            name  = "OLLAMA_HOST"
+            value = "0.0.0.0:11434"
+          }
+
           port {
-            container_port = 80
+            container_port = 8080
             name           = "http"
           }
 
-          # Serve a custom index.html with Hello World
-          args = [
-            "/bin/sh",
-            "-c",
-            "echo \"hello from $${NODE_NAME}\" > /usr/share/nginx/html/index.html && nginx -g 'daemon off;'",
-          ]
-
           resources {
             limits = {
-              cpu    = "250m"
-              memory = "256Mi"
+              cpu    = "2000m"
+              memory = "4Gi"
             }
             requests = {
-              cpu    = "100m"
-              memory = "128Mi"
+              cpu    = "1000m"
+              memory = "3Gi"
             }
           }
         }
@@ -177,22 +175,22 @@ resource "kubernetes_deployment" "nginx" {
   depends_on = [module.eks]
 }
 
-resource "kubernetes_service" "nginx" {
+resource "kubernetes_service" "ollama_wrapper" {
   metadata {
-    name      = "hello-nginx"
+    name      = "hello-ollama-wrapper"
     namespace = kubernetes_namespace.hello.metadata[0].name
     labels = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
   }
 
   spec {
     selector = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
     port {
       port        = 80
-      target_port = 80
+      target_port = 8080
       protocol    = "TCP"
     }
 
@@ -202,9 +200,9 @@ resource "kubernetes_service" "nginx" {
   depends_on = [module.eks]
 }
 
-output "nginx_service_hostname" {
-  description = "Public hostname of the NGINX service"
-  value       = kubernetes_service.nginx.status[0].load_balancer[0].ingress[0].hostname
+output "ollama_service_hostname" {
+  description = "Public hostname of the Ollama Wrapper service"
+  value       = kubernetes_service.ollama_wrapper.status[0].load_balancer[0].ingress[0].hostname
 }
 
 
@@ -241,7 +239,7 @@ resource "google_container_node_pool" "primary" {
   node_count = 1
 
   node_config {
-    machine_type = "e2-standard-2"
+    machine_type = "e2-standard-4"
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
     ]
@@ -270,13 +268,13 @@ resource "kubernetes_namespace" "hello_gke" {
   depends_on = [google_container_node_pool.primary]
 }
 
-resource "kubernetes_deployment" "nginx_gke" {
+resource "kubernetes_deployment" "ollama_wrapper_gke" {
   provider = kubernetes.gke
   metadata {
-    name      = "hello-nginx"
+    name      = "hello-ollama-wrapper"
     namespace = kubernetes_namespace.hello_gke.metadata[0].name
     labels = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
   }
 
@@ -285,21 +283,21 @@ resource "kubernetes_deployment" "nginx_gke" {
 
     selector {
       match_labels = {
-        app = "hello-nginx"
+        app = "hello-ollama-wrapper"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "hello-nginx"
+          app = "hello-ollama-wrapper"
         }
       }
 
       spec {
         container {
-          name  = "nginx"
-          image = "nginx:stable-alpine"
+          name  = "ollama-wrapper"
+          image = "public.ecr.aws/f0b1x2x3/ollama-wrapper:latest"
 
           env {
             name = "NODE_NAME"
@@ -310,25 +308,24 @@ resource "kubernetes_deployment" "nginx_gke" {
             }
           }
 
+          env {
+            name  = "OLLAMA_HOST"
+            value = "0.0.0.0:11434"
+          }
+
           port {
-            container_port = 80
+            container_port = 8080
             name           = "http"
           }
 
-          args = [
-            "/bin/sh",
-            "-c",
-            "echo \"hello from $${NODE_NAME}\" > /usr/share/nginx/html/index.html && nginx -g 'daemon off;'",
-          ]
-
           resources {
             limits = {
-              cpu    = "250m"
-              memory = "256Mi"
+              cpu    = "2000m"
+              memory = "4Gi"
             }
             requests = {
-              cpu    = "100m"
-              memory = "128Mi"
+              cpu    = "1000m"
+              memory = "3Gi"
             }
           }
         }
@@ -339,23 +336,23 @@ resource "kubernetes_deployment" "nginx_gke" {
   depends_on = [google_container_node_pool.primary]
 }
 
-resource "kubernetes_service" "nginx_gke" {
+resource "kubernetes_service" "ollama_wrapper_gke" {
   provider = kubernetes.gke
   metadata {
-    name      = "hello-nginx"
+    name      = "hello-ollama-wrapper"
     namespace = kubernetes_namespace.hello_gke.metadata[0].name
     labels = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
   }
 
   spec {
     selector = {
-      app = "hello-nginx"
+      app = "hello-ollama-wrapper"
     }
     port {
       port        = 80
-      target_port = 80
+      target_port = 8080
       protocol    = "TCP"
     }
     type = "LoadBalancer"
